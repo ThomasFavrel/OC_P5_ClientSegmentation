@@ -116,6 +116,7 @@ def display_cate_bar(data, var, show_values=True, figsize=(5,5), color='b'):
     import pandas as pd
     import matplotlib.pyplot as plt
     import seaborn as sns
+    sns.set()
     
     value_cont = pd.DataFrame.from_dict(dict(data[var].value_counts())
                                     ,orient='index')
@@ -229,7 +230,20 @@ def fillingrate_filter_rows(df, limit_rate):
 #============================================================================#
 
 def smart_imputation(dataframe):
-    """Do column-wise imputation based on the dtypes."""
+
+    '''
+    Do column-wise imputation based on the dtypes.
+
+    Parameters
+    ----------
+    dataframe : Dataframe
+        Dataframe to filter.
+
+    Returns
+    -------
+    None.
+
+    '''
     
     # Load libraries
     import pandas as pd
