@@ -389,6 +389,93 @@ def columns_filling_rate(dataframe, columns='all', missing_only=False):
 
 #============================================================================#
 
+def single_countplot(df, ax, x=None, y=None, top=None, order=True, hue=False, palette='plasma',
+                     width=0.75, sub_width=0.3, sub_size=12, annot=False):
+    """
+    Parâmetros
+    ----------
+    classifiers: conjunto de classificadores em forma de dicionário [dict]
+    X: array com os dados a serem utilizados no treinamento [np.array]
+    y: array com o vetor target do modelo [np.array]
 
+    Retorno
+    -------
+    None
+    """
+    
+    import seaborn as sns
+    import numpy as np
+
+    # Verificando plotagem por quebra de alguma variável categórica
+    ncount = len(df)
+    if x:
+        col = x
+    else:
+        col = y
+
+    # Verificando a plotagem de top categorias
+    if top is not None:
+        cat_count = df[col].value_counts()
+        top_categories = cat_count[:top].index
+        df = df[df[col].isin(top_categories)]
+
+    # Validando demais argumentos e plotando gráfico
+    if hue != False:
+        if order:
+            sns.countplot(x=x, y=y, data=df, palette=palette, ax=ax, order=df[col].value_counts().index, hue=hue)
+        else:
+            sns.countplot(x=x, y=y, data=df, palette=palette, ax=ax, hue=hue)
+    else:
+        if order:
+            sns.countplot(x=x, y=y, data=df, palette=palette, ax=ax, order=df[col].value_counts().index)
+        else:
+            sns.countplot(x=x, y=y, data=df, palette=palette, ax=ax)
+
+    # Formatando eixos
+    format_spines(ax, right_border=False)
+
+    # Inserindo rótulo de percentual
+    if annot == True:
+        if x:
+            for p in ax.patches:
+                x = p.get_bbox().get_points()[:, 0]
+                y = p.get_bbox().get_points()[1, 1]
+                try:
+                    ax.annotate('{}\n{:.1f}%'.format(int(y), 100. * y / ncount), (x.mean(), y), ha='center', va='bottom')
+                except:
+                    pass
+        else:
+            for p in ax.patches:
+                x = p.get_bbox().get_points()[1, 0]
+                y = p.get_bbox().get_points()[:, 1]
+                try:
+                    ax.annotate('{} ({:.1f}%)'.format(int(x), 100. * x / ncount), (x, y.mean()), va='center')
+                except:
+                    pass
 
 #============================================================================#
+
+def format_spines(ax, right_border=True):
+    """
+    This function sets up borders from an axis and personalize colors
+
+    Input:
+        Axis and a flag for deciding or not to plot the right border
+    Returns:
+        Plot configuration
+    """
+    
+    import matplotlib
+    
+    # Setting up colors
+    ax.spines['bottom'].set_color('#CCCCCC')
+    ax.spines['left'].set_color('#CCCCCC')
+    ax.spines['top'].set_visible(False)
+    if right_border:
+        ax.spines['right'].set_color('#CCCCCC')
+    else:
+        ax.spines['right'].set_color('#FFFFFF')
+    ax.patch.set_facecolor('#FFFFFF')
+
+#============================================================================#
+            
