@@ -391,35 +391,21 @@ def columns_filling_rate(dataframe, columns='all', missing_only=False):
 
 def single_countplot(df, ax, x=None, y=None, top=None, order=True, hue=False, palette='plasma',
                      width=0.75, sub_width=0.3, sub_size=12, annot=False):
-    """
-    Parâmetros
-    ----------
-    classifiers: conjunto de classificadores em forma de dicionário [dict]
-    X: array com os dados a serem utilizados no treinamento [np.array]
-    y: array com o vetor target do modelo [np.array]
-
-    Retorno
-    -------
-    None
-    """
     
     import seaborn as sns
     import numpy as np
 
-    # Verificando plotagem por quebra de alguma variável categórica
     ncount = len(df)
     if x:
         col = x
     else:
         col = y
 
-    # Verificando a plotagem de top categorias
     if top is not None:
         cat_count = df[col].value_counts()
         top_categories = cat_count[:top].index
         df = df[df[col].isin(top_categories)]
 
-    # Validando demais argumentos e plotando gráfico
     if hue != False:
         if order:
             sns.countplot(x=x, y=y, data=df, palette=palette, ax=ax, order=df[col].value_counts().index, hue=hue)
@@ -431,10 +417,8 @@ def single_countplot(df, ax, x=None, y=None, top=None, order=True, hue=False, pa
         else:
             sns.countplot(x=x, y=y, data=df, palette=palette, ax=ax)
 
-    # Formatando eixos
     format_spines(ax, right_border=False)
 
-    # Inserindo rótulo de percentual
     if annot == True:
         if x:
             for p in ax.patches:
@@ -456,15 +440,7 @@ def single_countplot(df, ax, x=None, y=None, top=None, order=True, hue=False, pa
 #============================================================================#
 
 def format_spines(ax, right_border=True):
-    """
-    This function sets up borders from an axis and personalize colors
 
-    Input:
-        Axis and a flag for deciding or not to plot the right border
-    Returns:
-        Plot configuration
-    """
-    
     import matplotlib
     
     # Setting up colors
@@ -478,4 +454,301 @@ def format_spines(ax, right_border=True):
     ax.patch.set_facecolor('#FFFFFF')
 
 #============================================================================#
-            
+
+def gini(clusters_labels):
+    """Compute the Gini coefficient for a clustering.
+    Parameters:
+        - clusters_labels: pd.Series of labels of clusters for each point.
+    """
+
+    # Get frequencies from clusters_labels
+    clusters_labels = pd.Series(clusters_labels)
+    frequencies = clusters_labels.value_counts()
+
+    # Mean absolute difference
+    mad = frequencies.mad()
+
+    # Mean frequency of clusters
+    mean = frequencies.mean()
+
+    # Gini coefficient
+    gini_coeff = 0.5 * mad / mean
+
+    return gini_coeff
+
+#============================================================================#
+
+def metrics_clustering(algorithm_name,
+                       standardized_features,
+                       clusters_labels,
+                       results_df):
+
+    from sklearn import metrics
+
+    # Number of clusters
+    # -------------------------------------------
+    nb_clusters = len(set(clusters_labels)) \
+        - (1 if -1 in clusters_labels else 0)
+    nb_clusters = int(nb_clusters)
+    print('Estimated number of clusters (excluding noise): %d' % nb_clusters)
+    results_df.loc[algorithm_name, 'Nb of clusters'] = nb_clusters
+
+    # Silhouette score
+    # -------------------------------------------
+    silhouette = metrics.silhouette_score(
+        standardized_features,
+        clusters_labels
+    )
+    print("\nSilhouette coefficient: s = {:.3f}".format(silhouette))
+    print("  Notice: values closer to 1 indicate a better partition")
+    results_df.loc[algorithm_name, 'Silhouette'] = silhouette
+
+    # Gini coefficient
+    # --------------------------------------------
+    gini_coeff = gini(clusters_labels)
+    print("\nGini coefficient: G = {:.3f}".format(gini_coeff))
+    print("  Notice: values closer to 0 indicate \
+    homogenic frequencies for clusters.")
+    results_df.loc[algorithm_name, 'Gini'] = gini_coeff
+
+    # Sorting the pd.DataFrame of results
+    results_df = results_df.sort_values('Silhouette', ascending=False)
+
+    print("")
+    return results_df
+
+#============================================================================#
+
+from sklearn.base import BaseEstimator
+
+
+class GridSearch(BaseEstimator):
+    """Classe permettant d'implémenter une recherche exhaustive sur grille
+    (sans validation croisée) pour les algorithmes de clustering."""
+
+    # Method: init
+    # ------------------------------------------------------------------------------
+    def __init__(
+            self,
+            estimator,  # clustering algorithm to test
+            param_grid,  # research space for hyperparameters
+            scoring=None):
+        """Méthode d'initialisation prenant en entrée le modèle
+        à tester et la grille de paramètres."""
+
+        # getting parameters
+        self.estimator = estimator
+        self.param_grid = param_grid
+        self.scoring = scoring
+
+    # Method: fit
+    # ------------------------------------------------------------------------------
+    def fit(self, X):
+        """Méthode permettant de réaliser la recherche sur grille,
+        et renvoyant le meilleur modèle trouvé, ré-entraîné sur les données."""
+
+        # initialization of the dict of results
+        self.results_ = {"scores": [],
+                         "params": [],
+                         "models": [],
+                         "fit_times": [],
+                         "nb_clusters": [],
+                         "gini_coef": []}
+
+        # Loading modules
+        from sklearn.model_selection import ParameterGrid
+
+        # iterating upon all combinations of parameters
+        for param_combination in ParameterGrid(param_grid):
+
+            # instanciation of the model with selected parameters
+            model = self.estimator(**param_combination)
+
+            # Measuring training time while fitting the model on the data
+            time_train = %timeit -n1 -r1 -o -q model.fit(X)
+            time_train = time_train.average
+
+            # Scoring the model
+            if not self.scoring:  # if scoring parameter not defined
+                model_score = model.score(X)
+            else:  # if scoring parameter is defined
+                try:
+                    labels = model.labels_
+                    model_score = self.scoring(X, labels)
+                except:
+                    model_score = np.nan
+
+            # Computing number of clusters, excluding noise (#-1)
+            nb_clusters = \
+                len(set(model.labels_)) - (1 if -1 in clusters_labels else 0)
+            nb_clusters = int(nb_clusters)
+
+            # Computing Gini coefficient
+            gini_coeff = gini(model.labels_)
+
+            # saving results, parameters and models in a dict
+            self.results_["scores"].append(model_score)  # scores
+            self.results_["params"].append(param_combination)  # parameters
+            self.results_["models"].append(model)  # trained models
+            self.results_["fit_times"].append(time_train)  # training time
+            self.results_["gini_coef"].append(gini_coeff)  # Gini coefficient
+            self.results_["nb_clusters"].append(nb_clusters)  # nb of clusters
+
+        # Selecting best model (assumes that 'greater is better')
+        # -----------------------------------
+        best_model_index, best_score = None, None  # initialisation
+        # iterating over scores
+        for index, score in enumerate(self.results_["scores"]):
+
+            # initialisation
+            if not best_score:
+                best_score = score
+                best_model_index = index
+
+            # if score is better than current best_score
+            if score > best_score:
+                # update the current best_score and current best_model_index
+                best_score = score
+                best_model_index = index
+
+        # Update attributes of the instance
+        self.best_score_ = self.results_["scores"][best_model_index]
+        self.best_params_ = self.results_["params"][best_model_index]
+        self.best_estimator_ = self.results_["models"][best_model_index]
+        self.best_index_ = best_model_index
+        self.refit_time_ = self.results_["fit_times"][best_model_index]
+
+        return self
+
+    # Method: predict
+    # ------------------------------------------------------------------------------
+    def predict(self, X_test):
+        """Méthode permettant de réaliser les prédictions sur le jeu de test,
+        en utilisant le meilleur modèle trouvé avec la méthode .fit
+        entraîné sur le jeu d'entraînement complet."""
+
+        # use the .predict method of the estimator on the best model
+        return self.best_model.predict(X_test)
+    
+#============================================================================#
+
+def plot_clusters(
+        standardized_features,
+        clusters_labels,
+        embedding_algo='tSNE',
+        ax=None):
+    """
+    Arguments:
+    ---------
+    embedding_algo: 'tSNE' or 'PCA' or 'Isomap'
+    """
+
+    # Applying the embedding
+    # -----------------
+    # Import libraries
+    from sklearn import manifold
+    from sklearn import decomposition
+
+    # Instanciation of the embedding
+    if embedding_algo == 'tSNE':
+        X_projected = X_tsne
+
+    elif embedding_algo == 'Isomap':
+        X_projected = X_isomap
+
+    elif embedding_algo == 'PCA':
+        X_projected = X_pca
+
+    # Plotting the Isomap embedding
+    # -----------------------------
+
+    # If no axes is passed…
+    if not ax:
+        # Set the axes to the current one
+        ax = plt.gca()  # ax = ax or plt.gca()
+        # Set dimensions of the figure (if no axes is passed)
+        plt.gcf().set_figwidth(12)
+        plt.gcf().set_figheight(7)
+
+    # Definitions of axis boundaries
+    ax.set_xlim(X_projected[:, 0].min()*1.1, X_projected[:, 0].max()*1.1)
+    ax.set_ylim(X_projected[:, 1].min()*1.1, X_projected[:, 1].max()*1.1)
+
+    # Properties of the axes
+    ax.set_title(embedding_algo, fontsize=20)
+
+    if embedding_algo == 'PCA':
+        # Names of x- and y- axis, with percentage of explained variance
+        ax.set_xlabel('First component ({}%)'
+                      .format(round(100*pca.explained_variance_ratio_[0], 1)))
+        ax.set_ylabel('Second component ({}%)'
+                      .format(round(100*pca.explained_variance_ratio_[1], 1)))
+    else:
+        ax.set_xlabel('First component')
+        ax.set_ylabel('Second component')
+
+    # Setting color
+    NB_CLUSTERS = \
+        len(set(clusters_labels)) - (1 if -1 in clusters_labels else 0)
+    color = clusters_labels / NB_CLUSTERS
+
+    # Setting color to black for noise points
+    # color = pd.Series(clusters_labels / NB_CLUSTERS).astype('object')
+    # color = color.map(lambda x: x if x != (-1 / NB_CLUSTERS) else 'black')
+
+    # Plotting the scatter plot
+    ax.scatter(
+            X_projected[:, 0],  # x-coordinate
+            X_projected[:, 1],  # y-coordinate
+            c=color,  # base for coloration of points
+            cmap=plt.cm.get_cmap('Set1'),  # colormap
+            )
+    
+#============================================================================#
+
+def clustering_plots(algorithm_name, standardized_features, clusters_labels):
+
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
+
+    fig = plt.figure()
+
+    # Set properties of the figure
+    fig.set_figheight(6)
+    fig.set_figwidth(23)
+    fig.suptitle('Visualisation of clustering with {}'
+                 .format(algorithm_name), fontsize=20)
+
+    # Set the geometry of the grid of subplots
+    gs = gridspec.GridSpec(nrows=1, ncols=3,)
+
+    # Initialize axes and set position (left to right, top to bottom)
+    # Use sharex or sharey parameter for sharing axis
+    ax1 = fig.add_subplot(gs[0])
+    ax2 = fig.add_subplot(gs[1])
+    ax3 = fig.add_subplot(gs[2])
+
+    # Filling the axes
+    plot_clusters(
+        standardized_features,
+        clusters_labels,
+        embedding_algo='tSNE',
+        ax=ax1
+    )
+    plot_clusters(
+        standardized_features,
+        clusters_labels,
+        embedding_algo='PCA',
+        ax=ax2
+    )
+    plot_clusters(
+        standardized_features,
+        clusters_labels,
+        embedding_algo='Isomap',
+        ax=ax3
+    )
+
+    # Automatically adjusts subplots params to fit the figure
+    gs.tight_layout(fig, rect=[0, 0, 1, 0.96])
+    
+#============================================================================#
